@@ -1,129 +1,155 @@
 package httpserver
 
-// func TestHandler_CreateShortURL(t *testing.T) {
-// 	t.Run("Successful creation", func(t *testing.T) {
-// 		logger := &slog.Logger{}
-// 		urlshortener := urlMocks.NewURLShortenerService(t)
-// 		render := urlMocks.NewRepresenrService(t)
-// 		metrics := &metrics.PrometheusMetrics{}
-// 		handler := NewHandler(logger, urlshortener, render, metrics)
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"url-shortener/internal/domain"
+	urlMocks "url-shortener/internal/mocks"
+	"url-shortener/internal/ports/httpServer/request"
+	"url-shortener/pkg/metrics"
 
-// 		input := request.UrlRequest{URL: "https://example.com"}
-// 		jsonInput, _ := json.Marshal(input)
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
 
-// 		newURL := &domain.URL{ShortURL: "shortURL", LongURL: "https://example.com"}
-// 		urlshortener.On("Create", mock.Anything, "https://example.com").Return(newURL, 10, nil)
+func TestHandler_CreateShortURL(t *testing.T) {
+	t.Run("Successful creation", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := metrics.NewMetrics(reg)
+		logger := &slog.Logger{}
+		urlshortener := urlMocks.NewURLShortenerService(t)
+		render := urlMocks.NewRepresenrService(t)
+		handler := NewHandler(logger, urlshortener, render, m)
 
-// 		req := httptest.NewRequest(http.MethodPost, "/api/v1/data/shorten", bytes.NewReader(jsonInput))
-// 		rr := httptest.NewRecorder()
+		input := request.UrlRequest{URL: "https://example.com"}
+		jsonInput, _ := json.Marshal(input)
 
-// 		handler.CreateShortURL(rr, req)
+		newURL := &domain.URL{ShortURL: "shortURL", LongURL: "https://example.com"}
+		urlshortener.On("Create", mock.Anything, "https://example.com").Return(newURL, 10, nil)
 
-// 		assert.Equal(t, http.StatusOK, rr.Code)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/data/shorten", bytes.NewReader(jsonInput))
+		rr := httptest.NewRecorder()
 
-// 		var body map[string]any
-// 		json.Unmarshal(rr.Body.Bytes(), &body)
+		handler.CreateShortURL(rr, req)
 
-// 		assert.Equal(t, "shortURL", body["short_url"])
-// 		assert.Equal(t, "https://example.com", body["original_url"])
-// 		urlshortener.AssertExpectations(t)
-// 	})
+		assert.Equal(t, http.StatusOK, rr.Code)
 
-// t.Run("Invalid JSON input", func(t *testing.T) {
-// 	logger := &slog.Logger{}
-// 	urlshortener := urlMocks.NewURLShortenerService(t)
-// 	render := &RepresenrService{}
-// 	metrics := &metrics.PrometheusMetrics{}
-// 	handler := NewHandler(logger, urlshortener, render, metrics)
+		var body map[string]any
+		json.Unmarshal(rr.Body.Bytes(), &body)
 
-// 	req := httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewReader([]byte("invalid json")))
-// 	rr := httptest.NewRecorder()
+		assert.Equal(t, "shortURL", body["short_url"])
+		assert.Equal(t, "https://example.com", body["original_url"])
+		urlshortener.AssertExpectations(t)
+	})
 
-// 	handler.CreateShortURL(rr, req)
+	t.Run("Invalid JSON input", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := metrics.NewMetrics(reg)
+		logger := &slog.Logger{}
+		urlshortener := urlMocks.NewURLShortenerService(t)
+		render := urlMocks.NewRepresenrService(t)
+		handler := NewHandler(logger, urlshortener, render, m)
 
-// 	assert.Equal(t, http.StatusBadRequest, rr.Code)
+		req := httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewReader([]byte("invalid json")))
+		rr := httptest.NewRecorder()
 
-// 	var body map[string]any
-// 	json.Unmarshal(rr.Body.Bytes(), &body)
+		handler.CreateShortURL(rr, req)
 
-// 	assert.Equal(t, "invalid character 'i' looking for beginning of value", body["message"])
-// })
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 
-// t.Run("Error creating short URL", func(t *testing.T) {
-// 	logger := &slog.Logger{}
-// 	urlshortener := urlMocks.NewURLShortenerService(t)
-// 	render := &RepresenrService{}
-// 	metrics := &metrics.PrometheusMetrics{}
-// 	handler := NewHandler(logger, urlshortener, render, metrics)
+		var body map[string]any
+		json.Unmarshal(rr.Body.Bytes(), &body)
 
-// 	input := request.UrlRequest{URL: "https://example.com"}
-// 	jsonInput, _ := json.Marshal(input)
+		assert.Equal(t, "invalid character 'i' looking for beginning of value", body["message"])
+	})
 
-// 	urlshortener.On("Create", mock.Anything, "https://example.com").Return(nil, 0, errors.New("database error"))
+	t.Run("Error creating short URL", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := metrics.NewMetrics(reg)
+		opts := &slog.HandlerOptions{}
+		logHandler := slog.NewJSONHandler(os.Stdout, opts)
+		logger := slog.New(logHandler)
+		urlshortener := urlMocks.NewURLShortenerService(t)
+		render := urlMocks.NewRepresenrService(t)
+		handler := NewHandler(logger, urlshortener, render, m)
 
-// 	req := httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewReader(jsonInput))
-// 	rr := httptest.NewRecorder()
+		input := request.UrlRequest{URL: "https://example.com"}
+		jsonInput, _ := json.Marshal(input)
 
-// 	handler.CreateShortURL(rr, req)
+		urlshortener.On("Create", mock.Anything, "https://example.com").Return(nil, 0, errors.New("database error"))
 
-// 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		req := httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewReader(jsonInput))
+		rr := httptest.NewRecorder()
 
-// 	var body map[string]any
-// 	json.Unmarshal(rr.Body.Bytes(), &body)
+		handler.CreateShortURL(rr, req)
 
-// 	assert.Equal(t, "database error", body["message"])
-// 	urlshortener.AssertExpectations(t)
-// })
-//}
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 
-// func TestHandler_RedirectionToUrl(t *testing.T) {
-// 	t.Run("Successful redirection", func(t *testing.T) {
-// 		logger := &slog.Logger{}
-// 		urlshortener := urlMocks.NewURLShortenerService(t)
-// 		render := urlMocks.NewRepresenrService{}
-// 		metrics := &metrics.PrometheusMetrics{}
-// 		handler := NewHandler(logger, urlshortener, render, metrics)
+		var body map[string]any
+		json.Unmarshal(rr.Body.Bytes(), &body)
 
-// 		shortURL := "shortURL"
-// 		originalURL := "https://example.com"
+		assert.Equal(t, "database error", body["message"])
+		urlshortener.AssertExpectations(t)
+	})
+}
 
-// 		urlshortener.On("GetOriginalURL", mock.Anything, shortURL).Return(originalURL, nil)
+func TestHandler_RedirectionToUrl(t *testing.T) {
+	t.Run("Successful redirection", func(t *testing.T) {
+		logger := &slog.Logger{}
+		urlshortener := urlMocks.NewURLShortenerService(t)
+		render := urlMocks.NewRepresenrService(t)
+		reg := prometheus.NewRegistry()
+		m := metrics.NewMetrics(reg)
+		handler := NewHandler(logger, urlshortener, render, m)
 
-// 		req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
-// 		rr := httptest.NewRecorder()
+		shortURL := "shortURL"
+		originalURL := "https://example.com"
 
-// 		handler.RedirectionToUrl(rr, req)
+		urlshortener.On("GetOriginalURL", mock.Anything, "").Return(originalURL, nil)
 
-// 		assert.Equal(t, http.StatusMovedPermanently, rr.Code)
-// 		assert.Equal(t, originalURL, rr.Header().Get("Location"))
-// 		urlshortener.AssertExpectations(t)
-// 		// assert.Equal(t, float64(1), metrics.RedirectsTotal.Get())
-// 		// assert.Equal(t, float64(1), metrics.Redirects.WithLabelValues(originalURL).Get())
-// 	})
+		req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
+		rr := httptest.NewRecorder()
 
-// 	t.Run("Error getting original URL", func(t *testing.T) {
-// 		logger := &slog.Logger{}
-// 		urlshortener := urlMocks.NewURLShortenerService(t)
-// 		render := &urlMocks.NewRepresenrService{}
-// 		metrics := &metrics.PrometheusMetrics{}
-// 		handler := NewHandler(logger, urlshortener, render, metrics)
+		handler.RedirectionToUrl(rr, req)
 
-// 		shortURL := "shortURL"
+		assert.Equal(t, http.StatusMovedPermanently, rr.Code)
+		assert.Equal(t, originalURL, rr.Header().Get("Location"))
+		urlshortener.AssertExpectations(t)
+	})
 
-// 		urlshortener.On("GetOriginalURL", mock.Anything, shortURL).Return("", errors.New("database error"))
+	t.Run("Error getting original URL", func(t *testing.T) {
+		opts := &slog.HandlerOptions{}
+		logHandler := slog.NewJSONHandler(os.Stdout, opts)
+		logger := slog.New(logHandler)
+		urlshortener := urlMocks.NewURLShortenerService(t)
+		render := urlMocks.NewRepresenrService(t)
+		reg := prometheus.NewRegistry()
+		m := metrics.NewMetrics(reg)
+		handler := NewHandler(logger, urlshortener, render, m)
 
-// 		req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
-// 		rr := httptest.NewRecorder()
+		shortURL := "shortURL"
 
-// 		handler.RedirectionToUrl(rr, req)
+		urlshortener.On("GetOriginalURL", mock.Anything, "").Return("", errors.New("database error"))
 
-// 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		req := httptest.NewRequest(http.MethodGet, "/"+shortURL, nil)
+		rr := httptest.NewRecorder()
 
-// 		var body map[string]any
-// 		json.Unmarshal(rr.Body.Bytes(), &body)
+		handler.RedirectionToUrl(rr, req)
 
-// 		assert.Equal(t, "database error", body["message"])
-// 		urlshortener.AssertExpectations(t)
-// 		//assert.Equal(t, float64(0), metrics.RedirectsTotal.Get())
-// 	})
-// }
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+
+		var body map[string]any
+		json.Unmarshal(rr.Body.Bytes(), &body)
+
+		assert.Equal(t, "database error", body["message"])
+		urlshortener.AssertExpectations(t)
+		//assert.Equal(t, float64(0), metrics.RedirectsTotal.Get())
+	})
+}

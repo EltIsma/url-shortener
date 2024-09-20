@@ -3,26 +3,19 @@ package local
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"url-shortener/internal/domain"
 )
 
 type repository struct {
-	Long map[string]struct{}
+	Long map[string]string
 	Short map[string]domain.URL
 	mu        sync.RWMutex
 }
 
 func New() *repository {
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	return &repository{
-		Long: make(map[string]struct{}),
+		Long: make(map[string]string),
 		Short: make(map[string]domain.URL),
 		mu:        sync.RWMutex{}}
 }
@@ -30,7 +23,7 @@ func New() *repository {
 func (r *repository) InsertUrl(ctx context.Context, url domain.URL) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.Long[url.LongURL] = struct{}{}
+	r.Long[url.LongURL] = url.ShortURL
 	r.Short[url.ShortURL] = url
 	return nil
 }
@@ -70,7 +63,7 @@ func (r *repository) DeleteShortUrl(ctx context.Context, shortURL string) error 
 	if _, ok := r.Long[url]; !ok {
 		return nil, domain.ErrOriginalURLNotFound
 	}
-	res := r.Short[url]
+	res := r.Short[r.Long[url]]
 
 	return &res, nil
 }
